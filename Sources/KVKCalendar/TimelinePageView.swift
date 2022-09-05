@@ -5,6 +5,8 @@
 //  Created by Sergei Kviatkovskii on 05.12.2020.
 //
 
+#if os(iOS)
+
 import UIKit
 
 final class TimelinePageView: UIView {
@@ -28,20 +30,24 @@ final class TimelinePageView: UIView {
     
     private var pages: [Int: TimelineView]
     private var currentIndex: Int
+    private let maxLimit: UInt
     
     var didSwitchTimelineView: ((TimelineView?, SwitchPageType) -> Void)?
     var willDisplayTimelineView: ((TimelineView, SwitchPageType) -> Void)?
     
     var timelineView: TimelineView? {
-        return pages[currentIndex]
+        pages[currentIndex]
     }
+    
+    var isPagingEnabled = true
     
     private let mainPageView: UIPageViewController = {
         let pageView = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal, options: [:])
         return pageView
     }()
     
-    init(pages: [TimelineView], frame: CGRect) {
+    init(maxLimit: UInt, pages: [TimelineView], frame: CGRect) {
+        self.maxLimit = maxLimit
         self.pages = pages.enumerated().reduce([:], { (acc, item) -> [Int: TimelineView] in
             var accTemp = acc
             accTemp[item.offset] = item.element
@@ -50,17 +56,57 @@ final class TimelinePageView: UIView {
         self.currentIndex = (pages.count / 2) - 1
         super.init(frame: frame)
         
-        let view = pages[currentIndex]
-        let container = TimelineContainerVC(index: currentIndex, contentView: view)
-        mainPageView.setViewControllers([container], direction: .forward, animated: false, completion: nil)
-        mainPageView.view.frame = CGRect(origin: .zero, size: frame.size)
-        addSubview(mainPageView.view)
+        if !pages.isEmpty {
+            let view = pages[currentIndex]
+            let container = TimelineContainerVC(index: currentIndex, contentView: view)
+            mainPageView.setViewControllers([container], direction: .forward, animated: false, completion: nil)
+            mainPageView.view.frame = CGRect(origin: .zero, size: frame.size)
+            addSubview(mainPageView.view)
+        }
         
         mainPageView.dataSource = self
         mainPageView.delegate = self
     }
     
-    func reloadCacheControllers() {
+    func updateStyle(_ style: Style, force: Bool) {
+        pages.forEach { $0.value.updateStyle(style, force: force) }
+    }
+    
+    func reloadPages(excludeCurrentPage: Bool = false) {
+        var items: [Int: TimelineView]
+        if excludeCurrentPage {
+            items = pages
+            items.removeValue(forKey: currentIndex)
+        } else {
+            items = pages
+        }
+        items.forEach { $0.value.reloadTimeline() }
+    }
+    
+    func removeAll(excludeCurrentPage: Bool = false) {
+        if excludeCurrentPage {
+            pages = pages.filter { $0.key == currentIndex }
+        } else {
+            pages.removeAll()
+        }
+    }
+    
+    func reloadScale(_ scale: CGFloat, excludeCurrentPage: Bool = false) {
+        var items: [Int: TimelineView]
+        if excludeCurrentPage {
+            items = pages
+            items.removeValue(forKey: currentIndex)
+        } else {
+            items = pages
+        }
+        
+        items.forEach {
+            $0.value.paramaters.scale = scale
+            $0.value.reloadTimeline()
+        }
+    }
+    
+    func reloadCachedControllers() {
         pages = pages.reduce([:], { (acc, item) -> [Int: TimelineView] in
             var accTemp = acc
             item.value.reloadFrame(CGRect(origin: .zero, size: bounds.size))
@@ -75,8 +121,16 @@ final class TimelinePageView: UIView {
         switch to {
         case .end:
             pages[currentIndex + 1] = timeline
+            
+            if pages.count > maxLimit, let firstKey = pages.max(by: { $0.key > $1.key }) {
+                pages.removeValue(forKey: firstKey.key)
+            }
         case .begin:
             pages[currentIndex - 1] = timeline
+            
+            if pages.count > maxLimit, let lastKey = pages.max(by: { $0.key < $1.key }) {
+                pages.removeValue(forKey: lastKey.key)
+            }
         }
     }
     
@@ -110,12 +164,14 @@ extension TimelinePageView: UIPageViewControllerDataSource, UIPageViewController
     }
     
     func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
-        guard var newIndex = (viewController as? TimelineContainerVC)?.index else {
-            return nil
-        }
+        guard var newIndex = (viewController as? TimelineContainerVC)?.index, isPagingEnabled else { return nil }
         
         newIndex -= 1
         guard let newTimelineView = pages[newIndex] else { return nil }
+        
+        if let scale = timelineView?.paramaters.scale, newTimelineView.paramaters.scale != scale {
+            newTimelineView.paramaters.scale = scale
+        }
         
         willDisplayTimelineView?(newTimelineView, .previous)
         let container = TimelineContainerVC(index: newIndex, contentView: newTimelineView)
@@ -123,12 +179,14 @@ extension TimelinePageView: UIPageViewControllerDataSource, UIPageViewController
     }
     
     func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
-        guard var newIndex = (viewController as? TimelineContainerVC)?.index, (newIndex + 1) < pages.count else {
-            return nil
-        }
+        guard var newIndex = (viewController as? TimelineContainerVC)?.index, isPagingEnabled else { return nil }
         
         newIndex += 1
         guard let newTimelineView = pages[newIndex] else { return nil }
+        
+        if let scale = timelineView?.paramaters.scale, newTimelineView.paramaters.scale != scale {
+            newTimelineView.paramaters.scale = scale
+        }
         
         willDisplayTimelineView?(newTimelineView, .next)
         let container = TimelineContainerVC(index: newIndex, contentView: newTimelineView)
@@ -147,7 +205,8 @@ extension TimelinePageView: UIPageViewControllerDataSource, UIPageViewController
             currentIndex = index
         }
         
-        currentIndex = index
         didSwitchTimelineView?(timelineView, type)
     }
 }
+
+#endif

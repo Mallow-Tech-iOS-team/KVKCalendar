@@ -5,37 +5,13 @@
 //  Created by Sergei Kviatkovskii on 09.03.2020.
 //
 
+#if os(iOS)
+
 import UIKit
-
-struct CrossEvent: Hashable {
-    let eventTime: EventTime
-    var count: Int
-    
-    init(eventTime: EventTime, count: Int = 1) {
-        self.eventTime = eventTime
-        self.count = count
-    }
-    
-    static func == (lhs: CrossEvent, rhs: CrossEvent) -> Bool {
-        return lhs.eventTime == rhs.eventTime
-            && lhs.count == rhs.count
-    }
-}
-
-extension CrossEvent {
-    var displayValue: String {
-        return "\(Date(timeIntervalSince1970: eventTime.start).toLocalTime()) - \(Date(timeIntervalSince1970: eventTime.end).toLocalTime()) = \(count)"
-    }
-}
 
 struct TimeContainer {
     var minute: Int
     var hour: Int
-}
-
-struct EventTime: Equatable, Hashable {
-    let start: TimeInterval
-    let end: TimeInterval
 }
 
 typealias ResizeTime = (hour: Int, minute: Int)
@@ -55,21 +31,60 @@ extension TimelineDelegate {
     func swipeX(transform: CGAffineTransform, stop: Bool) {}
 }
 
-protocol EventDateProtocol {}
+protocol EventDateProtocol: AnyObject {}
 
 extension EventDateProtocol {
+    
+    func mapRecurringEvents(_ recurringEvents: [Event],
+                            filteredEventsByDay: [Event],
+                            date: Date?,
+                            showRecurringEventInPast: Bool,
+                            calendar: Calendar) -> [Event] {
+        if !recurringEvents.isEmpty, let date = date {
+            return recurringEvents.reduce([], { (acc, event) -> [Event] in
+                guard !filteredEventsByDay.contains(where: { $0.ID == event.ID })
+                        && (date.compare(event.start) == .orderedDescending
+                            || showRecurringEventInPast) else { return acc }
+                
+                guard let recurringEvent = event.updateDate(newDate: date, calendar: calendar) else {
+                    return acc
+                }
+                
+                return acc + [recurringEvent]
+            })
+        } else {
+            return []
+        }
+    }
+    
     func compareStartDate(_ date: Date?, with event: Event) -> Bool {
-        return event.start.year == date?.year && event.start.month == date?.month && event.start.day == date?.day
+        guard let dt = date else { return false }
+        
+        return event.start.isEqual(dt)
     }
     
     func compareEndDate(_ date: Date?, with event: Event) -> Bool {
-        return event.end.year == date?.year && event.end.month == date?.month && event.end.day == date?.day
+        guard let dt = date else { return false }
+        
+        return event.end.isEqual(dt)
     }
     
-    func checkMultipleDate(_ date: Date?, with event: Event) -> Bool {
-        guard let timeInterval = date?.timeIntervalSince1970 else { return false }
+    func checkMultipleDate(_ date: Date?, with event: Event, checkMonth: Bool = false) -> Bool {
+        let startDate = event.start.timeIntervalSince1970
+        let endDate = event.end.timeIntervalSince1970
         
-        return event.start.day != event.end.day && event.start.timeIntervalSince1970...event.end.timeIntervalSince1970 ~= timeInterval && event.start.year == date?.year && event.start.month == date?.month
+        // workaround to fix crash https://github.com/kvyatkovskys/KVKCalendar/issues/191
+        guard let timeInterval = date?.timeIntervalSince1970, endDate > startDate else { return false }
+        
+        let result = event.start.kvkDay != event.end.kvkDay
+        && (startDate...endDate).contains(timeInterval)
+        && event.start.kvkYear == date?.kvkYear
+        
+        if checkMonth {
+            return result && event.start.kvkMonth == date?.kvkMonth
+        } else {
+            return result
+        }
     }
 }
 
@@ -83,3 +98,5 @@ extension TimelineView {
         case up, down
     }
 }
+
+#endif

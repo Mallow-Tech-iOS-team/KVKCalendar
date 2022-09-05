@@ -5,17 +5,24 @@
 //  Created by Sergei Kviatkovskii on 02/01/2019.
 //
 
+#if os(iOS)
+
 import UIKit
 
-final class MonthCell: UICollectionViewCell {
+final class MonthCell: KVKCollectionViewCell {
+    
+    var customViewFrame: CGRect {
+        let customY = dateLabel.frame.origin.y + dateLabel.frame.height + 3
+        return CGRect(x: 0, y: customY, width: frame.width, height: frame.height - customY)
+    }
+    
     private let titlesCount = 3
     private let countInCell: CGFloat = 4
     private let offset: CGFloat = 3
+    private let defaultTagView = -1
     
-    private lazy var dateLabel: UILabel = {
+    private let dateLabel: UILabel = {
         let label = UILabel()
-        label.tag = -1
-        label.font = monthStyle.fontNameDate
         label.textAlignment = .center
         label.clipsToBounds = true
         return label
@@ -27,7 +34,11 @@ final class MonthCell: UICollectionViewCell {
         return formatter.string(from: date)
     }
     
-    private var monthStyle = MonthStyle()
+    private var monthStyle = MonthStyle() {
+        didSet {
+            dateLabel.font = monthStyle.fontNameDate
+        }
+    }
     private var allDayStyle = AllDayStyle()
     
     private lazy var panGesture: UIPanGestureRecognizer = {
@@ -57,36 +68,53 @@ final class MonthCell: UICollectionViewCell {
             allDayStyle = style.allDay
         }
     }
-    weak var delegate: MonthCellDelegate?
     
+    weak var delegate: MonthCellDelegate?
+        
     var events: [Event] = [] {
         didSet {
-            subviews.filter({ $0.tag != -1 }).forEach({ $0.removeFromSuperview() })
+            contentView.subviews.filter { $0.tag != defaultTagView }.forEach { $0.removeFromSuperview() }
+            
             guard bounds.height > (dateLabel.bounds.height + 10) && day.type != .empty else {
                 if monthStyle.showDatesForOtherMonths {
-                    let monthLabel = UILabel(frame: CGRect(x: dateLabel.frame.origin.x - 50, y: dateLabel.frame.origin.y, width: 50, height: dateLabel.bounds.height))
-                    if let date = day.date, date.day == 1, UIDevice.current.userInterfaceIdiom != .phone {
-                        monthLabel.textAlignment = .right
-                        monthLabel.textColor = monthStyle.colorNameEmptyDay
-                        monthLabel.text = "\(date.titleForLocale(style.locale, formatter: monthStyle.shortInDayMonthFormatter))".capitalized
-                        addSubview(monthLabel)
-                    } else {
-                        monthLabel.removeFromSuperview()
-                    }
+                    showMonthName(day: day)
                 }
                 return
             }
             
-            if UIDevice.current.userInterfaceIdiom == .phone, UIDevice.current.orientation.isLandscape {
+            if Platform.currentInterface == .phone && UIDevice.current.orientation.isLandscape { return }
+            
+            if monthStyle.showMonthNameInFirstDay {
+                showMonthName(day: day)
+            }
+            
+            // using a custom view below the date label
+            if let date = day.date, let customView = delegate?.dequeueViewEvents(events, date: date, frame: customViewFrame) {
+                contentView.addSubview(customView)
                 return
             }
             
-            let height = (frame.height - dateLabel.bounds.height - 5) / countInCell
+            let height: CGFloat
+            let items: [Event]
             
-            for (idx, event) in events.enumerated() {
+            if frame.height > 70 {
+                items = events
+                height = (frame.height - dateLabel.bounds.height - 5) / countInCell
+            } else if let event = events.first {
+                items = [event]
+                height = (frame.height - dateLabel.bounds.height - 5)
+            } else {
+                items = []
+                height = (frame.height - dateLabel.bounds.height - 5)
+            }
+            
+            for (idx, event) in items.enumerated() {
                 let width = frame.width - 10
                 let count = idx + 1
-                let label = UILabel(frame: CGRect(x: 5, y: 5 + dateLabel.bounds.height + height * CGFloat(idx), width: width, height: height))
+                let label = UILabel(frame: CGRect(x: 5,
+                                                  y: 5 + dateLabel.bounds.height + height * CGFloat(idx),
+                                                  width: width,
+                                                  height: height))
                 label.isUserInteractionEnabled = true
                 
                 if count > titlesCount {
@@ -96,7 +124,7 @@ final class MonthCell: UICollectionViewCell {
                     label.minimumScaleFactor = 0.95
                     label.textAlignment = .center
                     let tap = UITapGestureRecognizer(target: self, action: #selector(tapOnMore))
-                    label.tag = event.start.day
+                    label.tag = event.start.kvkDay
                     label.addGestureRecognizer(tap)
                     label.textColor = monthStyle.colorMoreTitle
                     
@@ -109,12 +137,15 @@ final class MonthCell: UICollectionViewCell {
                         } else {
                             text = ""
                         }
-                        label.text = text
+                        
+                        if !text.isEmpty {
+                            label.text = text
+                            contentView.addSubview(label)
+                        }
                     }
-                    addSubview(label)
                     return
                 } else {
-                    if !event.isAllDay || UIDevice.current.userInterfaceIdiom == .phone {
+                    if !event.isAllDay || Platform.currentInterface == .phone {
                         label.attributedText = addIconBeforeLabel(eventList: [event],
                                                                   textAttributes: [.font: monthStyle.fontEventTitle,
                                                                                    .foregroundColor: monthStyle.colorEventTitle],
@@ -133,7 +164,7 @@ final class MonthCell: UICollectionViewCell {
                         label.textAlignment = .left
                         label.backgroundColor = event.color?.value ?? .systemGray
                         label.textColor = allDayStyle.textColor
-                        label.text = " \(event.text) "
+                        label.text = " \(event.title.timeline) "
                         label.setRoundCorners(monthStyle.eventCorners, radius: monthStyle.eventCornersRadius)
                     }
                     
@@ -141,11 +172,11 @@ final class MonthCell: UICollectionViewCell {
                     label.addGestureRecognizer(tap)
                     label.tag = event.hash
                     
-                    if style.event.states.contains(.move), UIDevice.current.userInterfaceIdiom != .phone, !event.isAllDay {
+                    if style.event.states.contains(.move) && Platform.currentInterface != .phone && !event.isAllDay {
                         label.addGestureRecognizer(longGesture)
                         label.addGestureRecognizer(panGesture)
                     }
-                    addSubview(label)
+                    contentView.addSubview(label)
                 }
             }
         }
@@ -158,15 +189,13 @@ final class MonthCell: UICollectionViewCell {
             switch day.type {
             case .empty:
                 if let tempDate = day.date, monthStyle.showDatesForOtherMonths {
-                    dateLabel.text = "\(tempDate.day)"
+                    dateLabel.text = "\(tempDate.kvkDay)"
                     dateLabel.textColor = monthStyle.colorNameEmptyDay
                 } else {
                     dateLabel.text = nil
                 }
             default:
-                subviews.filter({ $0.tag == -2 }).forEach({ $0.removeFromSuperview() })
-                
-                if let tempDay = day.date?.day {
+                if let tempDay = day.date?.kvkDay {
                     dateLabel.text = "\(tempDay)"
                 } else {
                     dateLabel.text = nil
@@ -174,12 +203,19 @@ final class MonthCell: UICollectionViewCell {
             }
 
             if !monthStyle.isHiddenSeparator {
-                if UIDevice.current.userInterfaceIdiom == .phone {
+                switch Platform.currentInterface {
+                case .phone:
                     let topLineLayer = CALayer()
-                    topLineLayer.frame = CGRect(x: 0, y: 0, width: frame.width, height: monthStyle.widthSeparator)
-                    topLineLayer.backgroundColor = monthStyle.colorSeparator.cgColor
-                    layer.addSublayer(topLineLayer)
-                } else {
+                    topLineLayer.name = "line_layer"
+                    
+                    if monthStyle.isHiddenSeparatorOnEmptyDate && day.type == .empty {
+                        layer.sublayers?.removeAll(where: { $0.name == "line_layer" })
+                    } else {
+                        topLineLayer.frame = CGRect(x: 0, y: 0, width: frame.width, height: monthStyle.widthSeparator)
+                        topLineLayer.backgroundColor = monthStyle.colorSeparator.cgColor
+                        layer.addSublayer(topLineLayer)
+                    }
+                default:
                     if day.type != .empty {
                         layer.borderWidth = monthStyle.isHiddenSeparatorOnEmptyDate ? 0 : monthStyle.widthSeparator
                         layer.borderColor = monthStyle.isHiddenSeparatorOnEmptyDate ? UIColor.clear.cgColor : monthStyle.colorSeparator.cgColor
@@ -198,15 +234,19 @@ final class MonthCell: UICollectionViewCell {
     @objc private func tapOneEvent(gesture: UITapGestureRecognizer) {
         if let idx = events.firstIndex(where: { $0.hash == gesture.view?.tag }) {
             let location = gesture.location(in: superview)
-            let newFrame = CGRect(x: location.x, y: location.y, width: gesture.view?.frame.width ?? 0, height: gesture.view?.frame.size.height ?? 0)
+            let newFrame = CGRect(x: location.x, y: location.y,
+                                  width: gesture.view?.frame.width ?? 0,
+                                  height: gesture.view?.frame.size.height ?? 0)
             delegate?.didSelectEvent(events[idx], frame: newFrame)
         }
     }
     
     @objc private func tapOnMore(gesture: UITapGestureRecognizer) {
-        if let idx = events.firstIndex(where: { $0.start.day == gesture.view?.tag }) {
+        if let idx = events.firstIndex(where: { $0.start.kvkDay == gesture.view?.tag }) {
             let location = gesture.location(in: superview)
-            let newFrame = CGRect(x: location.x, y: location.y, width: gesture.view?.frame.width ?? 0, height: gesture.view?.frame.size.height ?? 0)
+            let newFrame = CGRect(x: location.x, y: location.y,
+                                  width: gesture.view?.frame.width ?? 0,
+                                  height: gesture.view?.frame.size.height ?? 0)
             delegate?.didSelectMore(events[idx].start, frame: newFrame)
         }
     }
@@ -215,7 +255,7 @@ final class MonthCell: UICollectionViewCell {
         super.init(frame: frame)
         
         var dateFrame = frame
-        if UIDevice.current.userInterfaceIdiom == .pad {
+        if Platform.currentInterface != .phone {
             dateFrame.size = CGSize(width: 30, height: 30)
             dateFrame.origin.x = (frame.width - dateFrame.width) - offset
         } else {
@@ -225,8 +265,9 @@ final class MonthCell: UICollectionViewCell {
         }
         dateFrame.origin.y = offset
         dateLabel.frame = dateFrame
-        addSubview(dateLabel)
-        
+        dateLabel.tag = defaultTagView
+        contentView.addSubview(dateLabel)
+                
         if #available(iOS 13.4, *) {
             addPointInteraction(on: self, delegate: self)
         }
@@ -234,6 +275,21 @@ final class MonthCell: UICollectionViewCell {
     
     required init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    
+    private func showMonthName(day: Day) {
+        let monthLabel = UILabel(frame: CGRect(x: dateLabel.frame.origin.x - 50,
+                                               y: dateLabel.frame.origin.y,
+                                               width: 50,
+                                               height: dateLabel.bounds.height))
+        if let date = day.date, date.kvkDay == 1, Platform.currentInterface != .phone {
+            monthLabel.textAlignment = .right
+            monthLabel.textColor = dateLabel.textColor
+            monthLabel.text = "\(date.titleForLocale(style.locale, formatter: monthStyle.shortInDayMonthFormatter))".capitalized
+            contentView.addSubview(monthLabel)
+        } else {
+            monthLabel.removeFromSuperview()
+        }
     }
     
     @objc private func processMovingEvent(gesture: UIPanGestureRecognizer) {
@@ -248,9 +304,8 @@ final class MonthCell: UICollectionViewCell {
     @objc private func activateMovingEvent(gesture: UILongPressGestureRecognizer) {
         switch gesture.state {
         case .began:
-            guard let idx = events.firstIndex(where: { $0.hash == gesture.view?.tag }), let view = gesture.view else {
-                return
-            }
+            guard let idx = events.firstIndex(where: { $0.hash == gesture.view?.tag }),
+                  let view = gesture.view else { return }
             
             let event = events[idx]
             let snapshotLabel = UILabel(frame: view.frame)
@@ -278,7 +333,7 @@ final class MonthCell: UICollectionViewCell {
     
     private func populateCell(day: Day, label: UILabel, view: UIView) {
         let date = day.date
-        let weekend = day.type == .saturday || day.type == .sunday
+        let weekend = day.type == .saturday || day.type == .sunday || (date?.isWeekend == true)
         
         let nowDate = Date()
         label.backgroundColor = .clear
@@ -289,8 +344,14 @@ final class MonthCell: UICollectionViewCell {
         }
         
         if weekend {
+            switch Platform.currentInterface {
+            case .phone where day.type == .empty:
+                view.backgroundColor = UIColor.clear
+            default:
+                view.backgroundColor = monthStyle.colorBackgroundWeekendDate
+            }
+            
             label.textColor = textColorForEmptyDay ?? monthStyle.colorWeekendDate
-            view.backgroundColor = monthStyle.colorBackgroundWeekendDate
         } else {
             view.backgroundColor = monthStyle.colorBackgroundDate
             label.textColor = textColorForEmptyDay ?? monthStyle.colorDate
@@ -298,8 +359,8 @@ final class MonthCell: UICollectionViewCell {
         
         guard day.type != .empty else { return }
         
-        guard date?.year == nowDate.year else {
-            if date?.year == selectDate.year && date?.month == selectDate.month && date?.day == selectDate.day {
+        guard date?.kvkYear == nowDate.kvkYear else {
+            if date?.isEqual(selectDate) == true {
                 label.textColor = monthStyle.colorSelectDate
                 label.backgroundColor = monthStyle.colorBackgroundSelectDate
                 label.layer.cornerRadius = label.frame.height / 2
@@ -308,8 +369,8 @@ final class MonthCell: UICollectionViewCell {
             return
         }
         
-        guard date?.month == nowDate.month else {
-            if selectDate.day == date?.day && selectDate.month == date?.month {
+        guard date?.kvkMonth == nowDate.kvkMonth else {
+            if selectDate.kvkDay == date?.kvkDay && selectDate.kvkMonth == date?.kvkMonth {
                 label.textColor = monthStyle.colorSelectDate
                 label.backgroundColor = monthStyle.colorBackgroundSelectDate
                 label.layer.cornerRadius = label.frame.height / 2
@@ -318,8 +379,8 @@ final class MonthCell: UICollectionViewCell {
             return
         }
         
-        guard date?.day == nowDate.day else {
-            if selectDate.day == date?.day && date?.month == selectDate.month {
+        guard date?.kvkDay == nowDate.kvkDay else {
+            if selectDate.kvkDay == date?.kvkDay && date?.kvkMonth == selectDate.kvkMonth {
                 label.textColor = monthStyle.colorSelectDate
                 label.backgroundColor = monthStyle.colorBackgroundSelectDate
                 label.layer.cornerRadius = label.frame.height / 2
@@ -328,9 +389,9 @@ final class MonthCell: UICollectionViewCell {
             return
         }
         
-        guard selectDate.day == date?.day && selectDate.month == date?.month else {
-            if date?.day == nowDate.day {
-                label.textColor = monthStyle.colorDate
+        guard selectDate.kvkDay == date?.kvkDay && selectDate.kvkMonth == date?.kvkMonth else {
+            if date?.kvkDay == nowDate.kvkDay {
+                label.textColor = monthStyle.colorTitleCurrentDate
                 label.backgroundColor = .clear
             }
             return
@@ -342,9 +403,16 @@ final class MonthCell: UICollectionViewCell {
         label.clipsToBounds = true
     }
     
-    private func addIconBeforeLabel(eventList: [Event], textAttributes: [NSAttributedString.Key: Any], bulletAttributes: [NSAttributedString.Key: Any], timeAttributes: [NSAttributedString.Key: Any], bullet: String = "\u{2022}", indentation: CGFloat = 10, lineSpacing: CGFloat = 2, paragraphSpacing: CGFloat = 10) -> NSAttributedString {
+    private func addIconBeforeLabel(eventList: [Event],
+                                    textAttributes: [NSAttributedString.Key: Any],
+                                    bulletAttributes: [NSAttributedString.Key: Any],
+                                    timeAttributes: [NSAttributedString.Key: Any],
+                                    bullet: String = "\u{2022}",
+                                    indentation: CGFloat = 10,
+                                    lineSpacing: CGFloat = 2,
+                                    paragraphSpacing: CGFloat = 10) -> NSAttributedString {
         let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = UIDevice.current.userInterfaceIdiom == .pad ? .left : .center
+        paragraphStyle.alignment = Platform.currentInterface != .phone ? .left : .center
         paragraphStyle.tabStops = [NSTextTab(textAlignment: .left, location: indentation, options: [:])]
         paragraphStyle.defaultTabInterval = indentation
         paragraphStyle.lineSpacing = lineSpacing
@@ -354,10 +422,10 @@ final class MonthCell: UICollectionViewCell {
         
         return eventList.reduce(NSMutableAttributedString()) { (_, event) -> NSMutableAttributedString in
             let text: String
-            if monthStyle.isHiddenTitle {
+            if monthStyle.isHiddenEventTitle {
                 text = ""
             } else {
-                text = event.textForMonth
+                text = event.title.month ?? ""
             }
             
             let formattedString: String
@@ -370,7 +438,7 @@ final class MonthCell: UICollectionViewCell {
             let string: NSString = NSString(string: formattedString)
             
             let rangeForText = NSMakeRange(0, attributedString.length)
-            attributedString.addAttributes([NSAttributedString.Key.paragraphStyle: paragraphStyle], range: rangeForText)
+            attributedString.addAttributes([.paragraphStyle: paragraphStyle], range: rangeForText)
             attributedString.addAttributes(textAttributes, range: rangeForText)
             
             if !monthStyle.isHiddenDotInTitle {
@@ -381,16 +449,36 @@ final class MonthCell: UICollectionViewCell {
             return attributedString
         }
     }
+    
+    override func setSkeletons(_ skeletons: Bool,
+                               insets: UIEdgeInsets = UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4),
+                               cornerRadius: CGFloat = 2) {
+        dateLabel.isHidden = skeletons
+        
+        let stubView = UIView(frame: bounds)
+        if skeletons {
+            contentView.subviews.filter { $0.tag != defaultTagView }.forEach { $0.removeFromSuperview() }
+            contentView.addSubview(stubView)
+            stubView.setAsSkeleton(skeletons, cornerRadius: cornerRadius, insets: insets)
+        } else {
+            stubView.removeFromSuperview()
+        }
+    }
+    
 }
 
 extension MonthCell: UIGestureRecognizerDelegate {
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+    
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         return true
     }
+    
 }
 
 @available(iOS 13.4, *)
 extension MonthCell: PointerInteractionProtocol {
+    
     func pointerInteraction(_ interaction: UIPointerInteraction, styleFor region: UIPointerRegion) -> UIPointerStyle? {
         var pointerStyle: UIPointerStyle?
         
@@ -400,12 +488,18 @@ extension MonthCell: PointerInteractionProtocol {
         }
         return pointerStyle
     }
+    
 }
 
 protocol MonthCellDelegate: AnyObject {
+    
     func didSelectEvent(_ event: Event, frame: CGRect?)
     func didSelectMore(_ date: Date, frame: CGRect?)
     func didStartMoveEvent(_ event: EventViewGeneral, snapshot: UIView?, gesture: UILongPressGestureRecognizer)
     func didEndMoveEvent(gesture: UILongPressGestureRecognizer)
     func didChangeMoveEvent(gesture: UIPanGestureRecognizer)
+    func dequeueViewEvents(_ events: [Event], date: Date, frame: CGRect) -> UIView?
+    
 }
+
+#endif

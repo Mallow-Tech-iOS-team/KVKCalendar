@@ -5,6 +5,8 @@
 //  Created by Sergei Kviatkovskii on 02/01/2019.
 //
 
+#if os(iOS)
+
 import UIKit
 
 final class YearCell: UICollectionViewCell {
@@ -18,7 +20,7 @@ final class YearCell: UICollectionViewCell {
     }()
     
     private var topHeight: CGFloat {
-        switch UIDevice.current.userInterfaceIdiom {
+        switch Platform.currentInterface {
         case .phone:
             return 15
         default:
@@ -46,14 +48,16 @@ final class YearCell: UICollectionViewCell {
             titleLabel.textColor = style.year.colorTitle
             
             subviews.filter({ $0 is WeekHeaderView }).forEach({ $0.removeFromSuperview() })
-            let view = WeekHeaderView(frame: CGRect(x: 0, y: topHeight + 5, width: frame.width, height: topHeight), style: style, fromYear: true)
+            let view = WeekHeaderView(parameters: .init(style: style, isFromYear: true),
+                                      frame: CGRect(x: 0, y: topHeight + 5,
+                                                    width: frame.width, height: topHeight))
             addSubview(view)
         }
     }
     
     var date: Date? {
         didSet {
-            guard Date().month == date?.month && Date().year == date?.year else {
+            guard Date().kvkMonth == date?.kvkMonth && Date().kvkYear == date?.kvkYear else {
                 titleLabel.textColor = style.year.colorTitle
                 return
             }
@@ -126,7 +130,7 @@ final class YearCell: UICollectionViewCell {
             label.textColor = style.year.colorDayTitle
             label.adjustsFontSizeToFitWidth = true
             label.minimumScaleFactor = 0.8
-            if let tempDay = day.date?.day {
+            if let tempDay = day.date?.kvkDay {
                 label.text = "\(tempDay)"
             } else {
                 label.text = nil
@@ -155,8 +159,8 @@ final class YearCell: UICollectionViewCell {
             view.backgroundColor = style.year.colorBackgroundWeekendDate
         }
         
-        guard date?.year == nowDate.year else {
-            if date?.year == selectDate.year && date?.month == selectDate.month && date?.day == selectDate.day {
+        guard date?.kvkYear == nowDate.kvkYear else {
+            if date?.isEqual(selectDate) == true {
                 label.textColor = style.year.colorSelectDate
                 label.backgroundColor = style.year.colorBackgroundSelectDate
                 label.layer.cornerRadius = label.frame.height / 2
@@ -165,8 +169,8 @@ final class YearCell: UICollectionViewCell {
             return
         }
         
-        guard date?.month == nowDate.month else {
-            if selectDate.day == date?.day && selectDate.month == date?.month {
+        guard date?.kvkMonth == nowDate.kvkMonth else {
+            if selectDate.kvkDay == date?.kvkDay && selectDate.kvkMonth == date?.kvkMonth {
                 label.textColor = style.year.colorSelectDate
                 label.backgroundColor = style.year.colorBackgroundSelectDate
                 label.layer.cornerRadius = label.frame.height / 2
@@ -175,8 +179,8 @@ final class YearCell: UICollectionViewCell {
             return
         }
         
-        guard date?.day == nowDate.day else {
-            if selectDate.day == date?.day && date?.month == selectDate.month {
+        guard date?.kvkDay == nowDate.kvkDay else {
+            if selectDate.kvkDay == date?.kvkDay && date?.kvkMonth == selectDate.kvkMonth {
                 label.textColor = style.year.colorSelectDate
                 label.backgroundColor = style.year.colorBackgroundSelectDate
                 label.layer.cornerRadius = label.frame.height / 2
@@ -184,8 +188,8 @@ final class YearCell: UICollectionViewCell {
             }
             return
         }
-        guard selectDate.day == date?.day && selectDate.month == date?.month else {
-            if date?.day == nowDate.day {
+        guard selectDate.kvkDay == date?.kvkDay && selectDate.kvkMonth == date?.kvkMonth else {
+            if date?.kvkDay == nowDate.kvkDay {
                 label.textColor = style.year.colorBackgroundCurrentDate
                 label.backgroundColor = .clear
             }
@@ -200,6 +204,7 @@ final class YearCell: UICollectionViewCell {
 
 @available(iOS 13.4, *)
 extension YearCell: PointerInteractionProtocol {
+    
     func pointerInteraction(_ interaction: UIPointerInteraction, styleFor region: UIPointerRegion) -> UIPointerStyle? {
         var pointerStyle: UIPointerStyle?
         
@@ -209,4 +214,7 @@ extension YearCell: PointerInteractionProtocol {
         }
         return pointerStyle
     }
+    
 }
+
+#endif

@@ -5,6 +5,8 @@
 //  Created by Sergei Kviatkovskii on 03/01/2019.
 //
 
+#if os(iOS)
+
 import UIKit
 
 final class YearHeaderView: UICollectionReusableView {
@@ -20,7 +22,7 @@ final class YearHeaderView: UICollectionReusableView {
             guard let date = date else { return }
             
             titleLabel.text = date.titleForLocale(style.locale, formatter: style.year.titleFormatter)
-            if Date().year == date.year {
+            if Date().kvkYear == date.kvkYear {
                 titleLabel.textColor = .systemRed
             } else {
                 titleLabel.textColor = style.year.colorTitleHeader
@@ -39,8 +41,7 @@ final class YearHeaderView: UICollectionReusableView {
     
     override init(frame: CGRect) {
         super.init(frame: frame)
-        titleLabel.frame = CGRect(x: 20, y: 0, width: frame.width - 10, height: frame.height)
-        addSubview(titleLabel)
+        setUI()
     }
     
     required init?(coder aDecoder: NSCoder) {
@@ -49,12 +50,24 @@ final class YearHeaderView: UICollectionReusableView {
 }
 
 extension YearHeaderView: CalendarSettingProtocol {
+    
+    var currentStyle: Style {
+        style
+    }
+    
+    func setUI(reload: Bool = false) {
+        titleLabel.frame = CGRect(x: 20, y: 0, width: frame.width - 10, height: frame.height)
+        addSubview(titleLabel)
+    }
+    
     func reloadFrame(_ frame: CGRect) {
         self.frame.size.width = frame.width
         titleLabel.frame.size.width = frame.width
     }
     
-    func updateStyle(_ style: Style) {
+    func updateStyle(_ style: Style, force: Bool) {
         self.style = style
     }
 }
+
+#endif

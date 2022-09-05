@@ -5,61 +5,54 @@
 //  Created by Sergei Kviatkovskii on 22.08.2020.
 //
 
+#if os(iOS)
+
 import UIKit
 
 final class CurrentLineView: UIView {
     
-    private let style: Style
-    private let timeHourSystem: TimeHourSystem
+    struct Parameters {
+        var style: Style
+    }
+    
+    private var parameters: Parameters
 
-    private lazy var timeLabel: TimelineLabel = {
+    private let timeLabel: TimelineLabel = {
         let label = TimelineLabel()
-        label.textColor = style.timeline.currentLineHourColor
         label.textAlignment = .center
-        label.font = style.timeline.currentLineHourFont
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.6
-        
-        let formatter = DateFormatter()
-        formatter.dateFormat = timeHourSystem.format
-        formatter.timeZone = style.timezone
-        label.text = formatter.string(from: Date())
-        label.valueHash = Date().minute.hashValue
+        label.hashTime = Date().kvkMinute
         return label
     }()
     
-    private lazy var lineView: UIView = {
-        let view = UIView()
-        view.backgroundColor = style.timeline.currentLineHourColor
-        return view
+    private let formatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.amSymbol = "AM"
+        formatter.pmSymbol = "PM"
+        return formatter
     }()
     
-    private lazy var dotView: UIView = {
-        let view = UIView()
-        view.backgroundColor = style.timeline.currentLineHourColor
-        return view
-    }()
+    private let lineView = UIView()
+    private let dotView = UIView()
     
     var valueHash: Int?
-    
-    var time: String? {
+        
+    var date: Date = Date() {
         didSet {
-            timeLabel.text = time
+            if isHidden {
+                isHidden = false
+            }
+            timeLabel.text = formatter.string(from: date)
+            timeLabel.hashTime = date.kvkMinute
         }
     }
     
-    var date: Date?
-    
-    init(style: Style, frame: CGRect, timeHourSystem: TimeHourSystem) {
-        self.style = style
-        self.timeHourSystem = timeHourSystem
+    init(parameters: Parameters, frame: CGRect) {
+        self.parameters = parameters
         super.init(frame: frame)
-        
-        timeLabel.frame = CGRect(x: 2, y: 0, width: style.timeline.currentLineHourWidth - 5, height: frame.height)
-        dotView.frame = CGRect(origin: CGPoint(x: style.timeline.currentLineHourWidth - (style.timeline.currentLineHourDotSize.width * 0.5), y: (frame.height * 0.5) - 2), size: style.timeline.currentLineHourDotSize)
-        lineView.frame = CGRect(x: style.timeline.currentLineHourWidth, y: frame.height * 0.5, width: frame.width - style.timeline.currentLineHourWidth, height: style.timeline.currentLineHourHeight)
-        [timeLabel, lineView, dotView].forEach({ addSubview($0) })
-        dotView.setRoundCorners(radius: style.timeline.currentLineHourDotCornersRadius)
+        isUserInteractionEnabled = false
+        setUI()
     }
     
     required init?(coder: NSCoder) {
@@ -68,12 +61,62 @@ final class CurrentLineView: UIView {
 }
 
 extension CurrentLineView: CalendarSettingProtocol {
-    func updateStyle(_ style: Style) {
+    
+    var style: Style {
+        get {
+            parameters.style
+        }
+        set {
+            parameters.style = newValue
+        }
+    }
+    
+    func setUI(reload: Bool = false) {
+        subviews.forEach({ $0.removeFromSuperview() })
         
+        lineView.backgroundColor = style.timeline.currentLineHourColor
+        dotView.backgroundColor = style.timeline.currentLineHourColor
+        
+        formatter.dateFormat = style.timeSystem.format
+        formatter.timeZone = style.timezone
+        formatter.locale = style.locale
+        
+        timeLabel.textColor = style.timeline.currentLineHourColor
+        timeLabel.font = style.timeline.currentLineHourFont
+
+        let widthOffset: CGFloat
+#if targetEnvironment(macCatalyst)
+        widthOffset = 20
+#else
+        widthOffset = 5
+#endif
+
+        timeLabel.frame = CGRect(x: 0, y: 0,
+                                 width: style.timeline.currentLineHourWidth - widthOffset,
+                                 height: frame.height)
+        dotView.frame = CGRect(x: style.timeline.allLeftOffset - (style.timeline.currentLineHourDotSize.width * 0.5) - frame.origin.x,
+                               y: (frame.height * 0.5) - 2,
+                               width: style.timeline.currentLineHourDotSize.width,
+                               height: style.timeline.currentLineHourDotSize.height)
+        lineView.frame = CGRect(x: dotView.frame.origin.x,
+                                y: frame.height * 0.5,
+                                width: frame.width - frame.origin.x,
+                                height: style.timeline.currentLineHourHeight)
+        [timeLabel, lineView, dotView].forEach({ addSubview($0) })
+        dotView.setRoundCorners(radius: style.timeline.currentLineHourDotCornersRadius)
+        isHidden = true
+    }
+    
+    func updateStyle(_ style: Style, force: Bool) {
+        self.style = style
+        setUI(reload: force)
+        date = Date()
     }
     
     func reloadFrame(_ frame: CGRect) {
         self.frame.size.width = frame.width
-        lineView.frame.size.width = frame.width
+        self.frame.origin.x = frame.origin.x
     }
 }
+
+#endif

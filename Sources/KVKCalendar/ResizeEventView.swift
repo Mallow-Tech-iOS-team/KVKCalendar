@@ -5,6 +5,8 @@
 //  Created by Sergei Kviatkovskii on 24.10.2020.
 //
 
+#if os(iOS)
+
 import UIKit
 
 final class ResizeEventView: UIView {
@@ -72,8 +74,8 @@ final class ResizeEventView: UIView {
         self.event = event
         self.originalFrameEventView = frame
         self.style = style
-        self.startTime = TimeContainer(minute: event.start.minute, hour: event.start.hour)
-        self.endTime = TimeContainer(minute: event.end.minute, hour: event.end.hour)
+        self.startTime = TimeContainer(minute: event.start.kvkMinute, hour: event.start.kvkHour)
+        self.endTime = TimeContainer(minute: event.end.kvkMinute, hour: event.end.kvkHour)
         
         var newFrame = frame
         newFrame.origin.y -= mainYOffset
@@ -125,11 +127,12 @@ final class ResizeEventView: UIView {
         
         switch gesture.state {
         case .began:
-            UIImpactFeedbackGenerator().impactOccurred()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
         case .changed:
             delegate?.didStart(gesture: gesture, type: type)
         case .cancelled, .failed, .ended:
             delegate?.didEnd(gesture: gesture, type: type)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
         default:
             break
         }
@@ -142,6 +145,7 @@ final class ResizeEventView: UIView {
 
 @available(iOS 13.4, *)
 extension ResizeEventView: PointerInteractionProtocol {
+    
     func pointerInteraction(_ interaction: UIPointerInteraction, styleFor region: UIPointerRegion) -> UIPointerStyle? {
         var pointerStyle: UIPointerStyle?
         
@@ -153,8 +157,6 @@ extension ResizeEventView: PointerInteractionProtocol {
     }
     
     func pointerInteraction(_ interaction: UIPointerInteraction, regionFor request: UIPointerRegionRequest, defaultRegion: UIPointerRegion) -> UIPointerRegion? {
-        //let cursor =
-        print(request.location)
         if topView.frame.contains(request.location) {
             return UIPointerRegion(rect: topView.frame)
         } else if bottomView.frame.contains(request.location) {
@@ -163,6 +165,7 @@ extension ResizeEventView: PointerInteractionProtocol {
             return nil
         }
     }
+    
 }
 
 protocol ResizeEventViewDelegate: AnyObject {
@@ -172,3 +175,5 @@ protocol ResizeEventViewDelegate: AnyObject {
     func didEndMoveResizeEvent(_ event: Event, gesture: UIPanGestureRecognizer)
     func didChangeMoveResizeEvent(_ event: Event, gesture: UIPanGestureRecognizer)
 }
+
+#endif

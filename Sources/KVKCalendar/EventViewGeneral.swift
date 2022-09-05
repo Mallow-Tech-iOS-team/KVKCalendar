@@ -5,6 +5,8 @@
 //  Created by Sergei Kviatkovskii on 19.07.2020.
 //
 
+#if os(iOS)
+
 import UIKit
 
 open class EventViewGeneral: UIView, CalendarTimer {
@@ -14,7 +16,6 @@ open class EventViewGeneral: UIView, CalendarTimer {
     }
     
     weak var delegate: EventDelegate?
-    weak var dataSource: EventDataSource?
     
     private var originalLocation: CGPoint = .zero
     private let states: Set<EventViewState>
@@ -31,10 +32,18 @@ open class EventViewGeneral: UIView, CalendarTimer {
         return gesture
     }()
     
+    public let optionButton: UIButton = {
+        let button = UIButton(type: .infoLight)
+        if #available(iOS 14.0, macCatalyst 14.0, *) {
+            button.showsMenuAsPrimaryAction = true
+        }
+        return button
+    }()
+    
     public init(style: Style, event: Event, frame: CGRect) {
         self.style = style
         self.event = event
-        self.color = Event.Color(event.color?.value ?? event.backgroundColor).value
+        self.color = event.color?.value ?? event.backgroundColor
         self.states = style.event.states
         super.init(frame: frame)
         
@@ -105,14 +114,11 @@ open class EventViewGeneral: UIView, CalendarTimer {
                         
                         self.stateEvent = .move
                         self.delegate?.didEndResizeEvent(self.event, gesture: gesture)
-                        
-                        UIImpactFeedbackGenerator().impactOccurred()
                         self.alpha = self.style.event.alphaWhileMoving
                         self.delegate?.didStartMovingEvent(self.event, gesture: gesture, view: self)
                     }
                 }
                 
-                UIImpactFeedbackGenerator().impactOccurred()
                 delegate?.didStartResizeEvent(event, gesture: gesture, view: self)
             case .move:
                 guard isAvailableMove else { return }
@@ -132,9 +138,7 @@ open class EventViewGeneral: UIView, CalendarTimer {
             case .resize where distance > 15 && isAvailableResize:
                 stopTimer()
                 stateEvent = .move
-                delegate?.didEndResizeEvent(event, gesture: gesture)
-                
-                UIImpactFeedbackGenerator().impactOccurred()
+                delegate?.didEndResizeEvent(event, gesture: gesture)                
                 alpha = style.event.alphaWhileMoving
                 delegate?.didStartMovingEvent(event, gesture: gesture, view: self)
             case .move:
@@ -179,30 +183,20 @@ open class EventViewGeneral: UIView, CalendarTimer {
 
 extension EventViewGeneral {
     var isAvailableResize: Bool {
-        return states.contains(.resize)
+        states.contains(.resize)
     }
     
     var isAvailableMove: Bool {
-        return states.contains(.move)
+        states.contains(.move)
     }
     
     var isAvailableOnlyMove: Bool {
-        return states.contains(.move) && states.count == 1
-    }
-}
-
-@available(iOS 13, *)
-extension EventViewGeneral: UIContextMenuInteractionDelegate {
-    var interaction: UIContextMenuInteraction {
-        return UIContextMenuInteraction(delegate: self)
-    }
-    
-    public func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
-        return dataSource?.willDisplayContextMenu(event, date: event.start)
+        states.contains(.move) && states.count == 1
     }
 }
 
 protocol EventDelegate: AnyObject {
+    
     func didStartResizeEvent(_ event: Event, gesture: UILongPressGestureRecognizer, view: UIView)
     func didEndResizeEvent(_ event: Event, gesture: UILongPressGestureRecognizer)
     func didStartMovingEvent(_ event: Event, gesture: UILongPressGestureRecognizer, view: UIView)
@@ -210,14 +204,7 @@ protocol EventDelegate: AnyObject {
     func didChangeMovingEvent(_ event: Event, gesture: UILongPressGestureRecognizer)
     func didSelectEvent(_ event: Event, gesture: UITapGestureRecognizer)
     func deselectEvent(_ event: Event)
+    
 }
 
-protocol EventDataSource: AnyObject {
-    @available(iOS 13.0, *)
-    func willDisplayContextMenu(_ event: Event, date: Date?) -> UIContextMenuConfiguration?
-}
-
-extension EventDataSource {
-    @available(iOS 13.0, *)
-    func willDisplayContextMenu(_ event: Event, date: Date?) -> UIContextMenuConfiguration? { return nil }
-}
+#endif

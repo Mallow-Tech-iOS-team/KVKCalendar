@@ -5,12 +5,15 @@
 //  Created by Sergei Kviatkovskii on 02/01/2019.
 //
 
+#if os(iOS)
+
 import Foundation
 
 struct CalendarData {
     private let style: Style
     
-    let boxCount = 42
+    let maxBoxCount = 42
+    let minBoxCount = 35
     let date: Date
     var months = [Month]()
     var yearsCount = [Int]()
@@ -20,9 +23,9 @@ struct CalendarData {
         self.style = style
         
         // count years for calendar
-        let indexsYear = [Int](repeating: 0, count: years).split(half: years / 2)
-        let lastYear = indexsYear.left
-        let nextYear = indexsYear.right
+        let indexesYear = [Int](repeating: 0, count: years).split(half: years / 2)
+        let lastYear = indexesYear.left
+        let nextYear = indexesYear.right
                 
         // last years
         for lastIdx in lastYear.indices.reversed() where years > 1 {
@@ -55,12 +58,15 @@ struct CalendarData {
                 let year = calendar.component(.year, from: yearDate ?? date)
                 dateMonths = Array(monthsOfYearRange.lowerBound..<monthsOfYearRange.upperBound).compactMap({ monthOfYear -> Date? in
                     var components = DateComponents(year: year, month: monthOfYear)
-                    components.day = 2
+                    components.day = 1
                     return calendar.date(from: components)
                 })
             }
             
-            var months = zip(nameMonths, dateMonths).map({ Month(name: $0.0, date: $0.1, days: []) })
+            var months = zip(nameMonths, dateMonths).map { Month(name: $0.0,
+                                                                 date: $0.1,
+                                                                 days: [],
+                                                                 weeks: numberOfWeeksInMonth($0.1, calendar: calendar)) }
             
             for (idx, month) in months.enumerated() {
                 let days = getDaysInMonth(month: idx + 1, date: month.date)
@@ -73,14 +79,14 @@ struct CalendarData {
     
     func getDaysInMonth(month: Int, date: Date) -> [Day] {
         let calendar = style.calendar
-        var dateComponents = DateComponents(year: date.year, month: month)
+        var dateComponents = DateComponents(year: date.kvkYear, month: month)
         dateComponents.day = 1
         guard let dateMonth = calendar.date(from: dateComponents), let range = calendar.range(of: .day, in: .month, for: dateMonth) else { return [] }
         
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
         formatter.timeZone = style.timezone
-        let arrDates = Array(range.lowerBound..<range.upperBound).compactMap({ formatter.date(from: "\(date.year)-\(month)-\($0)") })
+        let arrDates = Array(range.lowerBound..<range.upperBound).compactMap({ formatter.date(from: "\(date.kvkYear)-\(month)-\($0)") })
 
         let formatterDay = DateFormatter()
         formatterDay.dateFormat = "EE"
@@ -89,11 +95,19 @@ struct CalendarData {
         return days
     }
     
-    func addStartEmptyDays(_ days: [Day], startDay: StartDayType) -> [Day] {
+    func addStartEmptyDays(_ days: [Day], startDay: StartDayType, maxDaysInWeek: Int? = nil) -> [Day] {
         var tempDays = [Day]()
         if let firstDay = days.first {
-            var endIdx = (firstDay.date?.weekday ?? 1) - 1
-            if startDay == .monday && firstDay.date?.isSunday == false {
+            var endIdx = (firstDay.date?.kvkWeekday ?? 1)
+            
+            switch startDay {
+            case .monday:
+                if firstDay.date?.isSunday == true {
+                    endIdx = 7 - endIdx
+                } else {
+                    endIdx -= 2
+                }
+            case .sunday:
                 endIdx -= 1
             }
             
@@ -109,7 +123,7 @@ struct CalendarData {
         return tempDays
     }
     
-    func addEndEmptyDays(_ days: [Day], startDay: StartDayType) -> [Day] {
+    func addEndEmptyDays(_ days: [Day], startDay: StartDayType, maxDaysInWeek: Int? = nil) -> [Day] {
         var tempDays = [Day]()
         if let lastDay = days.last {
             var emptyDays = [Day]()
@@ -117,11 +131,11 @@ struct CalendarData {
             let maxIdx: Int
             switch startDay {
             case .sunday:
-                maxIdx = 6 - 1
+                maxIdx = 6
             case .monday:
-                maxIdx = 7 - 1
+                maxIdx = 7
             }
-            let lastIdx = (lastDay.date?.weekday ?? 1) - 1
+            let lastIdx = (lastDay.date?.kvkWeekday ?? 1) - 1
             
             if maxIdx > lastIdx {
                 emptyDays = Array(0..<maxIdx - lastIdx).compactMap({ (idx) -> Day in
@@ -135,6 +149,15 @@ struct CalendarData {
             tempDays = days
         }
         return tempDays
+    }
+    
+    func numberOfWeeksInMonth(_ date: Date?, calendar: Calendar) -> Int {
+        guard let dt = date else { return 6 }
+        
+        var item = calendar
+        item.firstWeekday = 1
+        let weekRange = item.range(of: .weekOfMonth, in: .month, for: dt)
+        return weekRange?.count ?? 6
     }
     
     func getOffsetDate(offset: Int, to date: Date?) -> Date? {
@@ -158,6 +181,7 @@ struct Month {
     let name: String
     let date: Date
     var days: [Day]
+    var weeks: Int
 }
 
 struct Day {
@@ -182,7 +206,7 @@ struct Day {
     }
 }
 
-enum DayType: String, CaseIterable {
+public enum DayType: String, CaseIterable {
     case monday = "MON"
     case tuesday = "TUE"
     case wednesday = "WED"
@@ -196,3 +220,5 @@ enum DayType: String, CaseIterable {
 public enum StartDayType: Int {
     case monday, sunday
 }
+
+#endif
